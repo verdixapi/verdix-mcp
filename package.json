@@ -1,6 +1,6 @@
 {
   "name": "verdix-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "mcpName": "com.verdixapi/verdix",
   "description": "MCP server for Verdix: check an EVM address on Base before sending it funds (safe/caution/danger). Pays per call via x402 from your own wallet, with a max-price cap.",
   "type": "module",

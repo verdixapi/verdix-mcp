@@ -3,7 +3,7 @@
   "name": "com.verdixapi/verdix",
   "title": "Verdix address risk",
   "description": "Check an EVM address on Base before sending funds: safe/caution/danger. Pays per call via x402.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "websiteUrl": "https://api.verdixapi.com",
   "repository": {
     "url": "https://github.com/verdixapi/verdix-mcp",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "verdix-mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

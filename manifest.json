@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "verdix-mcp",
   "display_name": "Verdix address risk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Check an EVM address on Base before sending it funds: safe, caution or danger. Pays per call in USDC via x402 from your own wallet.",
   "long_description": "Verdix screens an EVM address on Base before your agent sends it money: OFAC sanctions, scam and phishing lists, address-poisoning lookalikes, contract provenance, burn addresses and more. It answers safe, caution or danger with the reasons.\n\nEach check is paid per call in USDC on Base via x402, from a wallet you configure here (quick $0.02, standard $0.10, deep $0.50). There's no account and no API key. Your private key is stored in your OS keychain and used only locally to sign each payment. A price cap refuses anything more expensive before signing.",
   "author": {
