@@ -1,0 +1,83 @@
+{
+  "manifest_version": "0.3",
+  "name": "verdix-mcp",
+  "display_name": "Verdix address risk",
+  "version": "0.1.0",
+  "description": "Check an EVM address on Base before sending it funds: safe, caution or danger. Pays per call in USDC via x402 from your own wallet.",
+  "long_description": "Verdix screens an EVM address on Base before your agent sends it money: OFAC sanctions, scam and phishing lists, address-poisoning lookalikes, contract provenance, burn addresses and more. It answers safe, caution or danger with the reasons.\n\nEach check is paid per call in USDC on Base via x402, from a wallet you configure here (quick $0.02, standard $0.10, deep $0.50). There's no account and no API key. Your private key is stored in your OS keychain and used only locally to sign each payment. A price cap refuses anything more expensive before signing.",
+  "author": {
+    "name": "Verdix",
+    "url": "https://api.verdixapi.com"
+  },
+  "homepage": "https://api.verdixapi.com",
+  "documentation": "https://www.npmjs.com/package/verdix-mcp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/verdixapi/verdix-mcp.git"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "src/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/src/index.js"
+      ],
+      "env": {
+        "VERDIX_PRIVATE_KEY": "${user_config.private_key}",
+        "VERDIX_MAX_PRICE_USD": "${user_config.max_price_usd}"
+      }
+    }
+  },
+  "user_config": {
+    "private_key": {
+      "type": "string",
+      "title": "Wallet private key (Base)",
+      "description": "Private key of a DEDICATED Base wallet holding a few dollars of USDC (no ETH needed). Used only on this computer to sign each payment; never sent anywhere. Leave empty to use only the free get_pricing tool.",
+      "sensitive": true,
+      "required": false
+    },
+    "max_price_usd": {
+      "type": "number",
+      "title": "Max price per check (USD)",
+      "description": "Most one check may cost. quick = $0.02, standard = $0.10, deep = $0.50. Anything above is refused before signing.",
+      "default": 0.1,
+      "min": 0,
+      "max": 5,
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "check_address_risk",
+      "description": "Paid: screen an EVM address on Base before sending it funds (safe / caution / danger, with reasons)."
+    },
+    {
+      "name": "get_pricing",
+      "description": "Free: current price per tier, your price cap and your wallet's public address."
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "keywords": [
+    "x402",
+    "base",
+    "usdc",
+    "wallet",
+    "address",
+    "risk",
+    "scam",
+    "phishing",
+    "security",
+    "crypto"
+  ],
+  "license": "MIT"
+}

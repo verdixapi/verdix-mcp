@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.verdixapi/verdix",
+  "title": "Verdix address risk",
+  "description": "Check an EVM address on Base before sending funds: safe/caution/danger. Pays per call via x402.",
+  "version": "0.1.0",
+  "websiteUrl": "https://api.verdixapi.com",
+  "repository": {
+    "url": "https://github.com/verdixapi/verdix-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "verdix-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "VERDIX_PRIVATE_KEY",
+          "description": "Private key of YOUR Base wallet holding a little USDC. Used only locally to sign each x402 payment; never sent anywhere. Needed for check_address_risk, not for get_pricing.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "VERDIX_MAX_PRICE_USD",
+          "description": "Most this server will pay for one call, in USD. Calls above it are refused before signing. quick=$0.02, standard=$0.10, deep=$0.50.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string",
+          "default": "0.10"
+        }
+      ]
+    }
+  ]
+}
