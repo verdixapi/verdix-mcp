@@ -3,6 +3,7 @@
 //
 //   node test/mcp-client.mjs free   # live API, no payment (no key needed)
 //   node test/mcp-client.mjs paid   # ONE real payment: quick tier ($0.02)
+//   TEST_TIER=standard node test/mcp-client.mjs paid   # ONE $0.10 (deep: $0.50)
 //
 // The paid mode needs VERDIX_PRIVATE_KEY in this process's environment and
 // passes it only to the spawned server. It is never printed.
@@ -35,7 +36,10 @@ const check = (cond, label) => {
 if (mode === "free") {
   let client = await connect({});
   const { tools } = await client.listTools();
-  check(JSON.stringify(tools.map((t) => t.name).sort()) === '["check_address_risk","get_pricing"]', `tools listed: ${tools.map((t) => t.name).join(", ")}`);
+  const expectedTools = JSON.stringify(
+    ["check_address_risk", "check_address_risk_deep", "check_address_risk_quick", "check_address_risk_standard", "get_pricing"].sort(),
+  );
+  check(JSON.stringify(tools.map((t) => t.name).sort()) === expectedTools, `tools listed: ${tools.map((t) => t.name).join(", ")}`);
   const pricing = await client.callTool({ name: "get_pricing", arguments: {} });
   const p = JSON.parse(text(pricing));
   check(!pricing.isError && p.tiers.length === 3, `get_pricing (live): ${p.tiers.map((t) => `${t.tier} $${t.price_usd}`).join(", ")}; cap $${p.your_max_price_usd}; wallet ${p.wallet_configured}`);
@@ -43,6 +47,8 @@ if (mode === "free") {
   check(noKey.isError && /No wallet configured/.test(text(noKey)), `no wallet -> refused: ${text(noKey).slice(0, 70)}...`);
   const bad = await client.callTool({ name: "check_address_risk", arguments: { address: "0x1234", tier: "quick" } });
   check(bad.isError, `malformed address -> rejected by input schema`);
+  const noKeyQuick = await client.callTool({ name: "check_address_risk_quick", arguments: { address: ADDRESS } });
+  check(noKeyQuick.isError && /No wallet configured/.test(text(noKeyQuick)), `no wallet -> refused (quick tier tool): ${text(noKeyQuick).slice(0, 70)}...`);
   await client.close();
 
   // Throwaway, unfunded key + a cap below the price: the live 402 must be
@@ -55,13 +61,18 @@ if (mode === "free") {
   await client.close();
 } else if (mode === "paid") {
   if (!process.env.VERDIX_PRIVATE_KEY) throw new Error("VERDIX_PRIVATE_KEY not set");
+  // TEST_TIER=standard|deep pays that tier instead; the cap is its exact price.
+  const tier = process.env.TEST_TIER || "quick";
+  const cap = { quick: "0.02", standard: "0.10", deep: "0.50" }[tier];
+  if (!cap) throw new Error(`TEST_TIER must be quick, standard or deep, got "${tier}"`);
   const client = await connect({
     VERDIX_PRIVATE_KEY: process.env.VERDIX_PRIVATE_KEY,
-    VERDIX_MAX_PRICE_USD: "0.02",
+    VERDIX_MAX_PRICE_USD: cap,
     ...(process.env.VERDIX_API_URL ? { VERDIX_API_URL: process.env.VERDIX_API_URL } : {}),
   });
+  console.log(`paying tier=${tier}, cap $${cap}`);
   const started = Date.now();
-  const res = await client.callTool({ name: "check_address_risk", arguments: { address: ADDRESS, tier: "quick" } }, undefined, { timeout: 120000 });
+  const res = await client.callTool({ name: "check_address_risk", arguments: { address: ADDRESS, tier } }, undefined, { timeout: 120000 });
   console.log(`tool answered in ${((Date.now() - started) / 1000).toFixed(1)}s, isError=${Boolean(res.isError)}`);
   console.log("VERDICT_JSON=" + text(res));
   console.log("PAYMENT=" + JSON.stringify(res._meta?.["com.verdixapi/payment"] ?? null));

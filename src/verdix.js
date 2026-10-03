@@ -117,16 +117,11 @@ export async function getPricing(config, fetchImpl = fetch) {
   };
 }
 
-/** Paid check. Returns { status, body, payment }: `body` is Verdix's
- *  answer exactly as sent (unchanged), `payment` the decoded settlement
- *  receipt when one was returned. */
-export async function checkAddressRisk(config, { address, tier = "standard", chain = "base" }, fetchImpl = fetch) {
-  if (!ADDRESS_RE.test(address || "")) {
-    throw new VerdixError("address must be 0x followed by 40 hex characters");
-  }
-  if (!TIERS.includes(tier)) {
-    throw new VerdixError(`tier must be one of ${TIERS.join(", ")}`);
-  }
+/** Signs and sends one paid POST for `tier` against `url` with `body`.
+ *  Returns { status, body, payment }: `body` is Verdix's answer exactly as
+ *  sent (unchanged), `payment` the decoded settlement receipt when one was
+ *  returned. Shared by the combined and single-tier endpoints below. */
+async function payAndFetch(config, { tier, url, body, fetchImpl }) {
   if (config.capError) throw new VerdixError(config.capError);
   if (config.keyError) throw new VerdixError(config.keyError);
   if (!config.account) {
@@ -153,15 +148,15 @@ export async function checkAddressRisk(config, { address, tier = "standard", cha
   });
   let resp;
   try {
-    resp = await payingFetch(`${config.apiUrl}/risk/address`, {
+    resp = await payingFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, chain, tier }),
+      body: JSON.stringify(body),
     });
   } catch (err) {
     throw refusal || err;
   }
-  const body = await resp.text();
+  const bodyText = await resp.text();
   const receiptHeader = resp.headers.get("payment-response");
   let payment = null;
   if (receiptHeader) {
@@ -171,5 +166,34 @@ export async function checkAddressRisk(config, { address, tier = "standard", cha
       payment = null;
     }
   }
-  return { status: resp.status, body, payment };
+  return { status: resp.status, body: bodyText, payment };
+}
+
+/** Paid check against the combined `/risk/address` endpoint (three
+ *  `accepts`, one per tier; kept for 0.1.x compatibility). A default x402
+ *  client here always pays the first, quick, option - see
+ *  checkAddressRiskAtTier for the per-tier URLs that avoid that trap. */
+export async function checkAddressRisk(config, { address, tier = "standard", chain = "base" }, fetchImpl = fetch) {
+  if (!ADDRESS_RE.test(address || "")) {
+    throw new VerdixError("address must be 0x followed by 40 hex characters");
+  }
+  if (!TIERS.includes(tier)) {
+    throw new VerdixError(`tier must be one of ${TIERS.join(", ")}`);
+  }
+  return payAndFetch(config, { tier, url: `${config.apiUrl}/risk/address`, body: { address, chain, tier }, fetchImpl });
+}
+
+/** Paid check against the single-tier `/risk/address/{tier}` endpoint
+ *  (one `accepts`, so any x402 client - including a default one that just
+ *  pays the first option - buys exactly the tier the URL names). The tier
+ *  is not sent in the request body: the URL is authoritative there, and
+ *  the API ignores the field on these routes. */
+export async function checkAddressRiskAtTier(config, { address, tier, chain = "base" }, fetchImpl = fetch) {
+  if (!ADDRESS_RE.test(address || "")) {
+    throw new VerdixError("address must be 0x followed by 40 hex characters");
+  }
+  if (!TIERS.includes(tier)) {
+    throw new VerdixError(`tier must be one of ${TIERS.join(", ")}`);
+  }
+  return payAndFetch(config, { tier, url: `${config.apiUrl}/risk/address/${tier}`, body: { address, chain }, fetchImpl });
 }

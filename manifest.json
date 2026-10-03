@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "verdix-mcp",
   "display_name": "Verdix address risk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Check an EVM address on Base before sending it funds: safe, caution or danger. Pays per call in USDC via x402 from your own wallet.",
   "long_description": "Verdix screens an EVM address on Base before your agent sends it money: OFAC sanctions, scam and phishing lists, address-poisoning lookalikes, contract provenance, burn addresses and more. It answers safe, caution or danger with the reasons.\n\nEach check is paid per call in USDC on Base via x402, from a wallet you configure here (quick $0.02, standard $0.10, deep $0.50). There's no account and no API key. Your private key is stored in your OS keychain and used only locally to sign each payment. A price cap refuses anything more expensive before signing.",
   "author": {
@@ -50,7 +50,19 @@
   "tools": [
     {
       "name": "check_address_risk",
-      "description": "Paid: screen an EVM address on Base before sending it funds (safe / caution / danger, with reasons)."
+      "description": "Paid: screen an EVM address on Base before sending it funds (safe / caution / danger, with reasons). Takes a tier argument (quick/standard/deep)."
+    },
+    {
+      "name": "check_address_risk_quick",
+      "description": "Paid ($0.02): same check, pinned to the quick tier's own URL so any x402 client pays the right price."
+    },
+    {
+      "name": "check_address_risk_standard",
+      "description": "Paid ($0.10): same check, pinned to the standard tier's own URL so any x402 client pays the right price."
+    },
+    {
+      "name": "check_address_risk_deep",
+      "description": "Paid ($0.50): same check, pinned to the deep tier's own URL so any x402 client pays the right price."
     },
     {
       "name": "get_pricing",

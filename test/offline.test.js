@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { generatePrivateKey } from "viem/accounts";
 
-import { USDC_BASE, VerdixError, checkAddressRisk, getPricing, loadConfig, makeSelector } from "../src/verdix.js";
+import { USDC_BASE, VerdixError, checkAddressRisk, checkAddressRiskAtTier, getPricing, loadConfig, makeSelector } from "../src/verdix.js";
 
 const ADDRESS = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const PAY_TO = "0x2e5a2170bd812997ae2e5b10921FB55fd0148ccF";
@@ -124,6 +124,28 @@ test("bad input rejected before any request", async () => {
 test("invalid cap refuses paid calls", async () => {
   const cfg = loadConfig({ VERDIX_PRIVATE_KEY: generatePrivateKey(), VERDIX_MAX_PRICE_USD: "lots" });
   await assert.rejects(checkAddressRisk(cfg, { address: ADDRESS, tier: "quick" }, mockApi().fetchImpl), /VERDIX_MAX_PRICE_USD/);
+});
+
+test("checkAddressRiskAtTier posts to the tier's own URL without a tier field in the body", async () => {
+  const cfg = loadConfig({ VERDIX_PRIVATE_KEY: generatePrivateKey(), VERDIX_MAX_PRICE_USD: "0.02" });
+  const { fetchImpl, calls } = mockApi();
+  const res = await checkAddressRiskAtTier(cfg, { address: ADDRESS, tier: "quick" }, fetchImpl);
+  assert.equal(res.status, 200);
+  assert.equal(res.body, VERDICT, "verdict JSON returned byte for byte");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, "https://api.verdixapi.com/risk/address/quick");
+  assert.equal(calls[1].url, "https://api.verdixapi.com/risk/address/quick");
+  assert.deepEqual(JSON.parse(calls[1].body), { address: ADDRESS, chain: "base" });
+  assert.equal(calls[1].paid, true);
+});
+
+test("checkAddressRiskAtTier refuses above the cap and bad input, same as checkAddressRisk", async () => {
+  const cappedCfg = loadConfig({ VERDIX_PRIVATE_KEY: generatePrivateKey(), VERDIX_MAX_PRICE_USD: "0.01" });
+  await assert.rejects(checkAddressRiskAtTier(cappedCfg, { address: ADDRESS, tier: "quick" }, mockApi().fetchImpl), /above your cap/);
+
+  const cfg = loadConfig({ VERDIX_PRIVATE_KEY: generatePrivateKey() });
+  await assert.rejects(checkAddressRiskAtTier(cfg, { address: "0x123", tier: "quick" }, mockApi().fetchImpl), /40 hex/);
+  await assert.rejects(checkAddressRiskAtTier(cfg, { address: ADDRESS, tier: "ultra" }, mockApi().fetchImpl), /tier must be/);
 });
 
 test("get_pricing reads the unpaid quote and signs nothing", async () => {

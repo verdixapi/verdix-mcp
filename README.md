@@ -25,7 +25,18 @@ never leaves your machine, and a price cap is enforced before anything is signed
 | Tool | What it does | Cost |
 |---|---|---|
 | `check_address_risk(address, tier)` | Verdix's verdict JSON, returned unchanged | quick $0.02 · standard $0.10 (default) · deep $0.50 |
+| `check_address_risk_quick(address)` | Same, pinned to the quick tier | $0.02 |
+| `check_address_risk_standard(address)` | Same, pinned to the standard tier | $0.10 |
+| `check_address_risk_deep(address)` | Same, pinned to the deep tier | $0.50 |
 | `get_pricing()` | Current prices, your price cap, and your wallet's public address | free |
+
+`check_address_risk` takes a `tier` argument, but an agent framework whose x402
+client always pays the **first** price it's offered will end up paying quick
+regardless of what `tier` it asked for. The three `check_address_risk_<tier>`
+tools avoid that: each calls Verdix's single-tier endpoint
+(`/risk/address/<tier>`), which offers exactly one price, so any x402 client
+pays the tier the tool name says. Use whichever is simpler for your client;
+both reach the same risk checks.
 
 ## What you need
 
