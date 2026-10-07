@@ -28,7 +28,8 @@ never leaves your machine, and a price cap is enforced before anything is signed
 | `check_address_risk_quick(address)` | Same, pinned to the quick tier | $0.02 |
 | `check_address_risk_standard(address)` | Same, pinned to the standard tier | $0.10 |
 | `check_address_risk_deep(address)` | Same, pinned to the deep tier | $0.50 |
-| `get_pricing()` | Current prices, your price cap, and your wallet's public address | free |
+| `check_address_risk_lite(address)` | Cheapest check; never answers `safe` (see [Lite](#lite-001-never-safe)) | $0.01 |
+| `get_pricing()` | Current prices (lite in its own `lite` field), your price cap, and your wallet's public address | free |
 
 `check_address_risk` takes a `tier` argument, but an agent framework whose x402
 client always pays the **first** price it's offered will end up paying quick
@@ -37,6 +38,22 @@ tools avoid that: each calls Verdix's single-tier endpoint
 (`/risk/address/<tier>`), which offers exactly one price, so any x402 client
 pays the tier the tool name says. Use whichever is simpler for your client;
 both reach the same risk checks.
+
+### Lite ($0.01, never "safe")
+
+`check_address_risk_lite` is the cheapest check, meant for a quick screen
+before sending USDC to an address you don't know. It calls
+`/risk/address/lite`, which checks OFAC sanctions, scam and phishing lists,
+address-poisoning lookalikes, burn addresses, phishing tokens and flagged
+contract deployers. It skips address age and the caution-only contract checks.
+
+Its verdict is `no_known_risk`, `caution` or `danger`, **never `safe`**.
+`no_known_risk` only means the address is on none of those lists. It is not a
+safety verdict. If you need `safe` (say, before a large transfer), use
+`check_address_risk_quick` ($0.02). The answer also carries `limited_checks:
+true`, `checks_performed`, `not_checked` and `full_check`. `get_pricing` lists
+quick/standard/deep in `tiers`, as before, and lite's price in a separate
+`lite` field.
 
 ## What you need
 
@@ -51,7 +68,7 @@ both reach the same risk checks.
 - **Your key stays on your machine.** It is read from this server's environment
   and used only to sign each payment locally. It is never sent to Verdix or
   anywhere else, and never logged.
-- **Price cap.** `VERDIX_MAX_PRICE_USD` (default `0.10`) is the most one call may
+- **Price cap.** `VERDIX_MAX_PRICE_USD` (default `0.10`, enough for lite, quick and standard) is the most one call may
   cost. A call above it is refused **before anything is signed**. To allow the
   deep tier, set it to `0.50`.
 - **Only USDC on Base mainnet.** Any other asset or network is refused.
@@ -146,7 +163,7 @@ verdix = StdioServerParameters(
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `VERDIX_PRIVATE_KEY` | for `check_address_risk` | none | Your Base wallet's private key (hex). `EVM_PRIVATE_KEY` is accepted too |
+| `VERDIX_PRIVATE_KEY` | for the paid check tools | none | Your Base wallet's private key (hex). `EVM_PRIVATE_KEY` is accepted too |
 | `VERDIX_MAX_PRICE_USD` | no | `0.10` | Most one call may cost, in USD |
 | `VERDIX_API_URL` | no | `https://api.verdixapi.com` | Only for testing against another deployment |
 
@@ -174,6 +191,8 @@ verdix = StdioServerParameters(
   unverified contract, or one of the data sources was unavailable. Ask the user
   before sending.
 - **`safe`**: every check ran and found nothing.
+- **`no_known_risk`** (lite only, instead of `safe`): none of lite's lists know
+  the address. Not a safety verdict; use quick if you need one.
 
 The payment receipt (payer, on-chain transaction) is in the tool result's `_meta`
 under `com.verdixapi/payment`.
@@ -181,7 +200,8 @@ under `com.verdixapi/payment`.
 ## Troubleshooting
 
 - **"No wallet configured"**: `VERDIX_PRIVATE_KEY` isn't set in this server's `env` block.
-- **"Refusing to pay: … above your cap"**: raise `VERDIX_MAX_PRICE_USD`, or use a cheaper tier.
+- **"Refusing to pay: … above your cap"**: raise `VERDIX_MAX_PRICE_USD`, or use a cheaper tier
+  (lite is $0.01).
 - **"Verdix did not accept the payment"**: the wallet probably has too little USDC on Base.
   Call `get_pricing` to see the wallet address to fund.
 - **Answer with HTTP 503**: a data source was down. You weren't charged; retry later.

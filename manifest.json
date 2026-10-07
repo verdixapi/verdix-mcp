@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "verdix-mcp",
   "display_name": "Verdix address risk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Check an EVM address on Base before sending it funds: safe, caution or danger. Pays per call in USDC via x402 from your own wallet.",
-  "long_description": "Verdix screens an EVM address on Base before your agent sends it money: OFAC sanctions, scam and phishing lists, address-poisoning lookalikes, contract provenance, burn addresses and more. It answers safe, caution or danger with the reasons.\n\nEach check is paid per call in USDC on Base via x402, from a wallet you configure here (quick $0.02, standard $0.10, deep $0.50). There's no account and no API key. Your private key is stored in your OS keychain and used only locally to sign each payment. A price cap refuses anything more expensive before signing.",
+  "long_description": "Verdix screens an EVM address on Base before your agent sends it money: OFAC sanctions, scam and phishing lists, address-poisoning lookalikes, contract provenance, burn addresses and more. It answers safe, caution or danger with the reasons.\n\nEach check is paid per call in USDC on Base via x402, from a wallet you configure here (lite $0.01, quick $0.02, standard $0.10, deep $0.50; lite never answers safe, only no_known_risk). There's no account and no API key. Your private key is stored in your OS keychain and used only locally to sign each payment. A price cap refuses anything more expensive before signing.",
   "author": {
     "name": "Verdix",
     "url": "https://api.verdixapi.com"
@@ -40,7 +40,7 @@
     "max_price_usd": {
       "type": "number",
       "title": "Max price per check (USD)",
-      "description": "Most one check may cost. quick = $0.02, standard = $0.10, deep = $0.50. Anything above is refused before signing.",
+      "description": "Most one check may cost. lite = $0.01, quick = $0.02, standard = $0.10, deep = $0.50. Anything above is refused before signing.",
       "default": 0.1,
       "min": 0,
       "max": 5,
@@ -65,8 +65,12 @@
       "description": "Paid ($0.50): same check, pinned to the deep tier's own URL so any x402 client pays the right price."
     },
     {
+      "name": "check_address_risk_lite",
+      "description": "Paid ($0.01): cheapest pre-send check (sanctions, scam/phishing lists, poisoning lookalikes, burn addresses, phishing tokens, flagged deployers). Never answers safe: a clean result is no_known_risk; use check_address_risk_quick for a safe verdict."
+    },
+    {
       "name": "get_pricing",
-      "description": "Free: current price per tier, your price cap and your wallet's public address."
+      "description": "Free: current price per tier (lite in its own field), your price cap and your wallet's public address."
     }
   ],
   "compatibility": {

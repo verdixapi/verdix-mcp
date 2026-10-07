@@ -4,6 +4,7 @@
 //   check_address_risk_quick(address)        - same, pinned to the quick tier's own URL
 //   check_address_risk_standard(address)     - same, pinned to the standard tier's own URL
 //   check_address_risk_deep(address)         - same, pinned to the deep tier's own URL
+//   check_address_risk_lite(address)         - $0.01 lite tier, never "safe" (no_known_risk)
 //   get_pricing()                            - free
 // stdout carries the MCP protocol only; diagnostics go to stderr.
 
@@ -13,7 +14,18 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { TIERS, VerdixError, checkAddressRisk, checkAddressRiskAtTier, getPricing, loadConfig } from "./verdix.js";
+import {
+  LITE_PRICE_USD,
+  LITE_TOOL_DESCRIPTION,
+  LITE_TOOL_NAME,
+  TIERS,
+  VerdixError,
+  checkAddressRisk,
+  checkAddressRiskAtTier,
+  checkAddressRiskLite,
+  getPricing,
+  loadConfig,
+} from "./verdix.js";
 
 const TIER_PRICE_USD = { quick: 0.02, standard: 0.1, deep: 0.5 };
 
@@ -144,13 +156,31 @@ for (const tier of TIERS) {
 }
 
 server.registerTool(
+  LITE_TOOL_NAME,
+  {
+    title: `Cheapest pre-send address check (lite, $${LITE_PRICE_USD.toFixed(2)}, never "safe")`,
+    description: LITE_TOOL_DESCRIPTION,
+    inputSchema: {
+      address: z
+        .string()
+        .regex(/^0x[0-9a-fA-F]{40}$/, "0x followed by 40 hex characters")
+        .describe("The EVM address to check (the recipient, contract or counterparty)"),
+    },
+    annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  async ({ address }) => runCheck(() => checkAddressRiskLite(config, { address })),
+);
+
+server.registerTool(
   "get_pricing",
   {
     title: "Verdix prices per tier",
     description:
       "Free. Current Verdix price per tier (USDC on Base, via x402), the payment recipient, your " +
       "configured max price per call, and whether a wallet is configured (with its public address, " +
-      "so it can be funded). Nothing is signed or paid.",
+      "so it can be funded). `tiers` lists quick/standard/deep; the lite tier ($0.01, " +
+      "check_address_risk_lite, never answers safe) is in the separate `lite` field. Nothing is " +
+      "signed or paid.",
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
