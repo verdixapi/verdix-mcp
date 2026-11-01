@@ -244,9 +244,17 @@ export const LITE_TOOL_DESCRIPTION =
   "\"no_known_risk\", which only means the address is on none of these lists - it is not a safety verdict. " +
   "'danger' means do not send funds. 'caution' means confirm with the user first. If you need a \"safe\" " +
   "verdict (e.g. before a large or irreversible transfer), call check_address_risk_quick ($0.02) instead " +
-  "or after this one. PAID: calling this tool always costs $0.01 USDC on Base via x402, paid from the " +
+  "or after this one. Optional chain: \"base\" (default, live data) or \"ethereum\" (Ethereum mainnet: " +
+  "OFAC, scam/phishing lists, burn addresses and address-poisoning lookalikes from a DAILY scan, not live; " +
+  "the answer adds data_through, the last complete UTC day, and coverage \"daily, not live\"; phishing-token " +
+  "and deployer checks are Base only, and there is no quick tier for Ethereum). PAID: calling this tool always " +
+  "costs $0.01 USDC on Base via x402 (also for chain=ethereum), paid from the " +
   "wallet configured in this server (VERDIX_PRIVATE_KEY), and is refused up front if that is above " +
-  "VERDIX_MAX_PRICE_USD. A 503 answer (data unavailable) is not charged.";
+  "VERDIX_MAX_PRICE_USD. A 503 answer (data unavailable, or Ethereum data out of date) is not charged.";
+
+/** Chains the lite tier and the free poisoning lookup answer for. Every
+ *  other tool stays Base only. */
+export const LITE_CHAINS = ["base", "ethereum"];
 
 /** Paid check against `/risk/address/lite` (one `accepts`, $0.01). Its
  *  verdict is no_known_risk | caution | danger, never "safe". Like the
@@ -255,10 +263,64 @@ export async function checkAddressRiskLite(config, { address, chain = "base" }, 
   if (!ADDRESS_RE.test(address || "")) {
     throw new VerdixError("address must be 0x followed by 40 hex characters");
   }
+  if (!LITE_CHAINS.includes(chain)) {
+    throw new VerdixError(`chain must be one of ${LITE_CHAINS.join(", ")}`);
+  }
   return payAndFetch(config, {
     tier: LITE_TIER,
     url: `${config.apiUrl}/risk/address/${LITE_TIER}`,
     body: { address, chain },
     fetchImpl,
   });
+}
+
+// Free poisoning lookup (GET /check/api): no wallet, nothing signed or paid.
+export const POISONING_TOOL_NAME = "check_address_poisoning";
+export const POISONING_TOOL_DESCRIPTION =
+  "Free (no wallet, nothing paid): look up whether Verdix's address-poisoning watcher has flagged an EVM " +
+  "address as a lookalike or poisoning bait, on Base (default, live) or Ethereum mainnet (chain " +
+  "\"ethereum\": a DAILY scan, not live). Returns Verdix's JSON unchanged: flagged (true/false), " +
+  "first_seen, kind; on Ethereum also data_through (the last complete UTC day; lookalikes planted after it " +
+  "are not seen yet) and coverage \"daily, not live\". flagged=true means do not send funds there. " +
+  "flagged=false is NOT a safety verdict: this checks address poisoning only (no sanctions, scam lists or " +
+  "other checks) - use check_address_risk_lite or check_address_risk_quick for a pre-send screen. " +
+  "Rate-limited per IP (30 per minute, 500 per day). A mixed-case address must have a valid checksum.";
+
+/** One free GET /check/api. Returns { status, body } with Verdix's answer
+ *  exactly as sent. No payment header, no wallet. */
+export async function checkAddressPoisoning(config, { address, chain = "base" }, fetchImpl = fetch) {
+  if (!ADDRESS_RE.test(address || "")) {
+    throw new VerdixError("address must be 0x followed by 40 hex characters");
+  }
+  if (!LITE_CHAINS.includes(chain)) {
+    throw new VerdixError(`chain must be one of ${LITE_CHAINS.join(", ")}`);
+  }
+  const params = new URLSearchParams({ address });
+  // Base requests stay exactly as /check sends them (no chain parameter).
+  if (chain !== "base") params.set("chain", chain);
+  const resp = await fetchImpl(`${config.apiUrl}/check/api?${params}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  return { status: resp.status, body: await resp.text() };
+}
+
+/** Ethereum lite answers must be about Ethereum, say how fresh they are
+ *  (data_through) and never say "safe"; anything else is turned into an
+ *  error instead of a clean-looking answer. Base answers are untouched. */
+export function vetEthereumLite(result, errorResult) {
+  if (result.isError) return result;
+  const answer = result.structuredContent;
+  const problem = !answer
+    ? "the answer is not JSON"
+    : answer.chain !== "ethereum"
+      ? `asked about ethereum, got ${answer.chain}`
+      : typeof answer.data_through !== "string"
+        ? "the Ethereum answer does not say how fresh its data is (no data_through)"
+        : answer.verdict === "safe"
+          ? 'lite never answers "safe"'
+          : null;
+  if (!problem) return result;
+  const { content, structuredContent, isError, ...rest } = result;
+  return errorResult(`Unusable Verdix answer: ${problem}. Do not treat it as a check. ` + content[0].text, rest);
 }

@@ -45,6 +45,7 @@ if (mode === "free") {
       "check_address_risk_standard",
       "get_pricing",
       "check_address_risk_lite",
+      "check_address_poisoning",
     ].sort(),
   );
   check(JSON.stringify(tools.map((t) => t.name).sort()) === expectedTools, `tools listed: ${tools.map((t) => t.name).join(", ")}`);
@@ -62,6 +63,18 @@ if (mode === "free") {
   check(Boolean(lite) && /NEVER returns "safe"/.test(lite.description) && /no_known_risk/.test(lite.description), "lite tool description says no_known_risk, never safe");
   const noKeyLite = await client.callTool({ name: "check_address_risk_lite", arguments: { address: ADDRESS } });
   check(noKeyLite.isError && /No wallet configured/.test(text(noKeyLite)), `no wallet -> refused (lite tool): ${text(noKeyLite).slice(0, 70)}...`);
+  const noKeyLiteEth = await client.callTool({ name: "check_address_risk_lite", arguments: { address: ADDRESS, chain: "ethereum" } });
+  check(noKeyLiteEth.isError && /No wallet configured/.test(text(noKeyLiteEth)), "no wallet -> refused (lite tool, chain=ethereum)");
+  const badChain = await client.callTool({ name: "check_address_risk_lite", arguments: { address: ADDRESS, chain: "solana" } });
+  check(badChain.isError, "lite chain=solana -> rejected by input schema");
+  // Free lookup: one live GET /check/api per chain, no wallet.
+  const poisonBase = await client.callTool({ name: "check_address_poisoning", arguments: { address: ADDRESS } });
+  const pb = poisonBase.isError ? null : JSON.parse(text(poisonBase));
+  check(pb && typeof pb.flagged === "boolean" && !("data_through" in pb), `free poisoning lookup (live, base): ${text(poisonBase).slice(0, 80)}`);
+  const ETH_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const poisonEth = await client.callTool({ name: "check_address_poisoning", arguments: { address: ETH_USDC, chain: "ethereum" } });
+  const pe = poisonEth.isError ? null : JSON.parse(text(poisonEth));
+  check(pe && pe.flagged === false && /^\d{4}-\d{2}-\d{2}$/.test(pe.data_through) && pe.coverage === "daily, not live", `free poisoning lookup (live, ethereum): ${text(poisonEth).slice(0, 120)}`);
   await client.close();
 
   // Lite costs $0.01, so it needs a cap below that to be refused by the

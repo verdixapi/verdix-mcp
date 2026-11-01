@@ -11,6 +11,11 @@ import {
   TIERS,
   USDC_BASE,
   VerdixError,
+  LITE_CHAINS,
+  POISONING_TOOL_DESCRIPTION,
+  POISONING_TOOL_NAME,
+  checkAddressPoisoning,
+  vetEthereumLite,
   checkAddressRisk,
   checkAddressRiskAtTier,
   checkAddressRiskLite,
@@ -269,4 +274,100 @@ test("lite tool description: when to use it, never safe, quick for a safe verdic
   assert.match(d, /NEVER returns "safe"/);
   assert.match(d, /check_address_risk_quick/);
   assert.ok(!/verdict \(safe/.test(d), "must not list safe as a possible verdict");
+});
+
+const ETH_LITE_VERDICT = '{"address":"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48","chain":"ethereum","tier":"lite","price_usd":0.01,"risk_score":10,"verdict":"no_known_risk","reasons":[],"checked":["ofac"],"as_of":"2026-10-31T00:00:00+00:00","limited_checks":true,"checks_performed":["ofac"],"not_checked":["phishing_token"],"full_check":"base only","data_through":"2026-10-30","coverage":"daily, not live"}';
+
+test("lite chain=ethereum: same URL and price, body carries chain, answer unchanged (data_through kept)", async () => {
+  const cfg = loadConfig({ VERDIX_PRIVATE_KEY: generatePrivateKey() });
+  const { fetchImpl, calls } = mockApi(LITE_QUOTE_HEADER, ETH_LITE_VERDICT);
+  const res = await checkAddressRiskLite(cfg, { address: ADDRESS, chain: "ethereum" }, fetchImpl);
+  assert.equal(res.status, 200);
+  assert.equal(res.body, ETH_LITE_VERDICT);
+  assert.equal(calls[1].url, "https://api.verdixapi.com/risk/address/lite");
+  assert.deepEqual(JSON.parse(calls[1].body), { address: ADDRESS, chain: "ethereum" });
+  const signed = JSON.parse(Buffer.from(calls[1].paidHeader, "base64").toString("utf8"));
+  assert.equal(signed.payload.authorization.value, "10000");
+  assert.equal(signed.accepted.network, "eip155:8453", "Ethereum checks are still paid on Base");
+});
+
+test("lite: unknown chain refused before any request; Base default unchanged", async () => {
+  const cfg = loadConfig({ VERDIX_PRIVATE_KEY: generatePrivateKey() });
+  const { fetchImpl, calls } = mockApi(LITE_QUOTE_HEADER, LITE_VERDICT);
+  await assert.rejects(checkAddressRiskLite(cfg, { address: ADDRESS, chain: "solana" }, fetchImpl), /chain must be one of base, ethereum/);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(LITE_CHAINS, ["base", "ethereum"]);
+});
+
+test("lite tool description: Ethereum is daily, not live, with data_through, still paid on Base", () => {
+  const d = LITE_TOOL_DESCRIPTION;
+  assert.match(d, /"ethereum"/);
+  assert.match(d, /DAILY scan, not live/);
+  assert.match(d, /data_through/);
+  assert.match(d, /daily, not live/);
+  assert.match(d, /\$0\.01 USDC on Base via x402 \(also for chain=ethereum\)/);
+});
+
+function mockCheckApi(status, body) {
+  const calls = [];
+  const fetchImpl = async (input, init = {}) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    calls.push({ method: req.method, url: req.url, headers: Object.fromEntries(req.headers) });
+    return new Response(body, { status, headers: { "content-type": "application/json" } });
+  };
+  return { fetchImpl, calls };
+}
+
+test("poisoning lookup: free GET /check/api, no wallet, no payment header, Base sends no chain param", async () => {
+  const body = '{"flagged":false,"first_seen":null,"kind":null}';
+  const { fetchImpl, calls } = mockCheckApi(200, body);
+  const res = await checkAddressPoisoning(loadConfig({}), { address: ADDRESS }, fetchImpl);
+  assert.deepEqual(res, { status: 200, body });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].url, `https://api.verdixapi.com/check/api?address=${ADDRESS}`);
+  assert.ok(!calls[0].headers["payment-signature"] && !calls[0].headers["x-payment"]);
+});
+
+test("poisoning lookup: chain=ethereum adds chain=ethereum and returns data_through unchanged", async () => {
+  const body = '{"flagged":true,"first_seen":"2026-10-29T00:00:00Z","kind":"poisoning_lookalike","data_through":"2026-10-30","coverage":"daily, not live"}';
+  const { fetchImpl, calls } = mockCheckApi(200, body);
+  const res = await checkAddressPoisoning(loadConfig({}), { address: ADDRESS, chain: "ethereum" }, fetchImpl);
+  assert.equal(res.body, body);
+  assert.equal(calls[0].url, `https://api.verdixapi.com/check/api?address=${ADDRESS}&chain=ethereum`);
+});
+
+test("poisoning lookup: bad address or chain refused before any request; 503 passed through", async () => {
+  const { fetchImpl, calls } = mockCheckApi(503, '{"error":"data_stale"}');
+  await assert.rejects(checkAddressPoisoning(loadConfig({}), { address: "0x12" }, fetchImpl), /40 hex/);
+  await assert.rejects(checkAddressPoisoning(loadConfig({}), { address: ADDRESS, chain: "bsc" }, fetchImpl), /chain must be/);
+  assert.equal(calls.length, 0);
+  const res = await checkAddressPoisoning(loadConfig({}), { address: ADDRESS, chain: "ethereum" }, fetchImpl);
+  assert.equal(res.status, 503);
+});
+
+test("poisoning tool description: free, not a safety verdict, Ethereum daily", () => {
+  assert.equal(POISONING_TOOL_NAME, "check_address_poisoning");
+  const d = POISONING_TOOL_DESCRIPTION;
+  assert.match(d, /^Free/);
+  assert.match(d, /NOT a safety verdict/);
+  assert.match(d, /DAILY scan, not live/);
+  assert.match(d, /data_through/);
+  assert.ok(!/"safe"/.test(d.replace("NOT a safety verdict", "")));
+});
+
+test("vetEthereumLite: good Ethereum answer passes; wrong chain, no data_through or safe become errors", () => {
+  const err = (message, extra = {}) => ({ isError: true, content: [{ type: "text", text: message }], ...extra });
+  const wrap = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj) }], structuredContent: obj, _meta: { x: 1 } });
+  const good = JSON.parse(ETH_LITE_VERDICT);
+  assert.equal(vetEthereumLite(wrap(good), err).isError, undefined);
+  const base = vetEthereumLite(wrap({ ...good, chain: "base" }), err);
+  assert.equal(base.isError, true);
+  assert.match(base.content[0].text, /asked about ethereum, got base/);
+  assert.deepEqual(base._meta, { x: 1 }, "payment receipt kept");
+  const { data_through, ...noDay } = good;
+  assert.match(vetEthereumLite(wrap(noDay), err).content[0].text, /no data_through/);
+  assert.match(vetEthereumLite(wrap({ ...good, verdict: "safe" }), err).content[0].text, /never answers "safe"/);
+  const already = err("x");
+  assert.equal(vetEthereumLite(already, err), already);
 });

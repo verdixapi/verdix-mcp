@@ -28,7 +28,8 @@ never leaves your machine, and a price cap is enforced before anything is signed
 | `check_address_risk_quick(address)` | Same, pinned to the quick tier | $0.02 |
 | `check_address_risk_standard(address)` | Same, pinned to the standard tier | $0.10 |
 | `check_address_risk_deep(address)` | Same, pinned to the deep tier | $0.50 |
-| `check_address_risk_lite(address)` | Cheapest check; never answers `safe` (see [Lite](#lite-001-never-safe)) | $0.01 |
+| `check_address_risk_lite(address, chain)` | Cheapest check; never answers `safe` (see [Lite](#lite-001-never-safe)). `chain`: `base` (default) or `ethereum` (daily data, see [Ethereum](#ethereum-lite-and-free-lookup-daily-not-live)) | $0.01 |
+| `check_address_poisoning(address, chain)` | Has Verdix's poisoning watcher flagged this address? Base (live) or Ethereum (daily). Not a safety verdict | free |
 | `get_pricing()` | Current prices (lite in its own `lite` field), your price cap, and your wallet's public address | free |
 
 `check_address_risk` takes a `tier` argument, but an agent framework whose x402
@@ -54,6 +55,31 @@ safety verdict. If you need `safe` (say, before a large transfer), use
 true`, `checks_performed`, `not_checked` and `full_check`. `get_pricing` lists
 quick/standard/deep in `tiers`, as before, and lite's price in a separate
 `lite` field.
+
+### Ethereum (lite and free lookup, daily, not live)
+
+Since 0.4.0, `check_address_risk_lite` and `check_address_poisoning` take an
+optional `chain`: `base` (the default, unchanged) or `ethereum` (Ethereum
+mainnet). Every other tool stays Base only.
+
+- **Lite on Ethereum** ($0.01, still paid in USDC **on Base**) checks OFAC
+  sanctions, scam and phishing lists, burn addresses and address-poisoning
+  lookalikes. Phishing-token and deployer checks are Base only, and there is
+  no quick/standard/deep for Ethereum.
+- The Ethereum poisoning data comes from a **daily scan, not live**. Every
+  Ethereum answer carries `data_through` (the last complete UTC day) and
+  `coverage: "daily, not live"`. A lookalike planted after `data_through`
+  isn't seen yet. If the data is out of date, Verdix answers 503 and you
+  aren't charged.
+- `check_address_poisoning` is free (no wallet, nothing signed) and calls
+  `GET /check/api`. It answers only `flagged`, `first_seen` and `kind` (plus
+  `data_through`/`coverage` on Ethereum). `flagged: false` is **not** a safety
+  verdict: it covers address poisoning only. It's rate-limited per IP (30 per
+  minute, 500 per day).
+
+```json
+{"flagged": false, "first_seen": null, "kind": null, "data_through": "2026-10-30", "coverage": "daily, not live"}
+```
 
 ## What you need
 
@@ -163,7 +189,7 @@ verdix = StdioServerParameters(
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `VERDIX_PRIVATE_KEY` | for the paid check tools | none | Your Base wallet's private key (hex). `EVM_PRIVATE_KEY` is accepted too |
+| `VERDIX_PRIVATE_KEY` | for the paid check tools (not `get_pricing` or `check_address_poisoning`) | none | Your Base wallet's private key (hex). `EVM_PRIVATE_KEY` is accepted too |
 | `VERDIX_MAX_PRICE_USD` | no | `0.10` | Most one call may cost, in USD |
 | `VERDIX_API_URL` | no | `https://api.verdixapi.com` | Only for testing against another deployment |
 

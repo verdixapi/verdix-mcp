@@ -4,7 +4,9 @@
 //   check_address_risk_quick(address)        - same, pinned to the quick tier's own URL
 //   check_address_risk_standard(address)     - same, pinned to the standard tier's own URL
 //   check_address_risk_deep(address)         - same, pinned to the deep tier's own URL
-//   check_address_risk_lite(address)         - $0.01 lite tier, never "safe" (no_known_risk)
+//   check_address_risk_lite(address, chain)  - $0.01 lite tier, never "safe" (no_known_risk);
+//                                              chain base (default) or ethereum (daily data)
+//   check_address_poisoning(address, chain)  - free poisoning lookup (GET /check/api)
 //   get_pricing()                            - free
 // stdout carries the MCP protocol only; diagnostics go to stderr.
 
@@ -15,11 +17,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import {
+  LITE_CHAINS,
   LITE_PRICE_USD,
   LITE_TOOL_DESCRIPTION,
   LITE_TOOL_NAME,
+  POISONING_TOOL_DESCRIPTION,
+  POISONING_TOOL_NAME,
   TIERS,
   VerdixError,
+  checkAddressPoisoning,
+  vetEthereumLite,
   checkAddressRisk,
   checkAddressRiskAtTier,
   checkAddressRiskLite,
@@ -165,10 +172,67 @@ server.registerTool(
         .string()
         .regex(/^0x[0-9a-fA-F]{40}$/, "0x followed by 40 hex characters")
         .describe("The EVM address to check (the recipient, contract or counterparty)"),
+      chain: z
+        .enum(LITE_CHAINS)
+        .default("base")
+        .describe(
+          "base (default, live data) or ethereum (Ethereum mainnet, daily scan: the answer has " +
+            "data_through and coverage \"daily, not live\"). Still paid $0.01 in USDC on Base.",
+        ),
     },
     annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true },
   },
-  async ({ address }) => runCheck(() => checkAddressRiskLite(config, { address })),
+  async ({ address, chain }) => {
+    const result = await runCheck(() => checkAddressRiskLite(config, { address, chain }));
+    return chain === "ethereum" ? vetEthereumLite(result, errorResult) : result;
+  },
+);
+
+
+server.registerTool(
+  POISONING_TOOL_NAME,
+  {
+    title: "Free address-poisoning lookup (Base or Ethereum)",
+    description: POISONING_TOOL_DESCRIPTION,
+    inputSchema: {
+      address: z
+        .string()
+        .regex(/^0x[0-9a-fA-F]{40}$/, "0x followed by 40 hex characters")
+        .describe("The EVM address to look up (the recipient you are about to send to)"),
+      chain: z
+        .enum(LITE_CHAINS)
+        .default("base")
+        .describe("base (default, live data) or ethereum (daily scan, not live; answer has data_through)"),
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
+  },
+  async ({ address, chain }) => {
+    try {
+      const { status, body } = await checkAddressPoisoning(config, { address, chain });
+      if (status === 200) {
+        let structured;
+        try {
+          structured = JSON.parse(body);
+        } catch {
+          structured = undefined;
+        }
+        return {
+          content: [{ type: "text", text: body }],
+          ...(structured && typeof structured === "object" ? { structuredContent: structured } : {}),
+        };
+      }
+      const why =
+        status === 503
+          ? "Verdix could not confirm right now (data out of date or unavailable); no answer is given rather than a stale one. Retry later. "
+          : status === 429
+            ? "Rate limit reached for the free lookup (30/min, 500/day per IP). "
+            : `Verdix answered HTTP ${status}. `;
+      return errorResult(why + body);
+    } catch (err) {
+      const message = err instanceof VerdixError ? err.message : `Request failed: ${err && err.message}`;
+      return errorResult(message);
+    }
+  },
 );
 
 server.registerTool(
