@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/verdix-mcp)](https://www.npmjs.com/package/verdix-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-com.verdixapi%2Fverdix-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=com.verdixapi/verdix)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![verdixapi/verdix-mcp MCP server](https://glama.ai/mcp/servers/verdixapi/verdix-mcp/badges/score.svg)](https://glama.ai/mcp/servers/verdixapi/verdix-mcp)
 
 An [MCP](https://modelcontextprotocol.io) server that lets your AI agent check an
 EVM address on **Base** before sending it funds or approving a contract. It calls
